@@ -1,5 +1,3 @@
-* [ ] 
-
 # MiniRedis
 
 > A lightweight Redis-compatible in-memory database built from scratch in Go.
@@ -126,7 +124,16 @@ flowchart TB
 
 ### Component Responsibilities
 
-* [ ] ComponentResponsibilityTCP ListenerAccepts incoming client connectionsRESP ReaderParses client requestsCommand HandlerProcesses individual client requestsCommand DispatcherRoutes commands to their implementationsIn-Memory StoreMaintains active database stateRESP WriterEncodes responses sent to clientsAOF ManagerPersists write operationsAOF FileStores commands required for recovery
+| Component          | Responsibility                           |
+| ------------------ | ---------------------------------------- |
+| TCP Listener       | Accepts incoming client connections      |
+| RESP Reader        | Parses client requests                   |
+| Command Handler    | Processes individual client requests     |
+| Command Dispatcher | Routes commands to their implementations |
+| In-Memory Store    | Maintains active database state          |
+| RESP Writer        | Encodes responses sent to clients        |
+| AOF Manager        | Persists write operations                |
+| AOF File           | Stores commands required for recovery    |
 
 ---
 
@@ -459,4 +466,4 @@ MiniRedis demonstrates practical experience with low-level backend and systems c
 
 ## License
 
-This project is licensed under the MIT License.
+* [ ] This project is licensed under the MIT License.
