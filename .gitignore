@@ -35,3 +35,10 @@ go.work.sum
 ref.txt
 
 ss/
+
+goal/
+
+claude/
+
+database.aof
+*.exe
