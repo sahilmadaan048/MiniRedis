@@ -5,7 +5,18 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 )
+
+// Commands that modify data and therefore must be persisted.
+var writeCommands = map[string]bool{
+	"SET":  true,
+	"HSET": true,
+}
+
+// writeMu makes "execute + append to AOF" atomic, so the order of commands in
+// the file always matches the order in which they were applied in memory.
+var writeMu sync.Mutex
 
 func main() {
 	aof, err := NewAof("database.aof")
@@ -26,7 +37,7 @@ func main() {
 
 		handler, ok := Handlers[command]
 		if !ok {
-			fmt.Println("Invalid command:", command)
+			fmt.Println("Invalid command in AOF:", command)
 			return
 		}
 
@@ -60,7 +71,6 @@ func main() {
 func handleConn(conn net.Conn, aof *Aof) {
 	defer conn.Close()
 
-	// One reader and one writer for the whole lifetime of the connection.
 	resp := NewResp(conn)
 	writer := NewWriter(conn)
 
@@ -73,35 +83,46 @@ func handleConn(conn net.Conn, aof *Aof) {
 			return
 		}
 
-		if value.typ != "array" {
-			fmt.Println("Invalid request, expected array")
+		if value.typ != "array" || len(value.array) == 0 {
+			if err := writer.Write(Value{typ: "error", str: "ERR invalid request, expected non-empty array"}); err != nil {
+				return
+			}
 			continue
 		}
 
-		if len(value.array) == 0 {
-			fmt.Println("Invalid request, expected array length > 0")
-			continue
-		}
-
-		command := strings.ToUpper(value.array[0].bulk)
+		name := value.array[0].bulk
+		command := strings.ToUpper(name)
 		args := value.array[1:]
 
 		handler, ok := Handlers[command]
 		if !ok {
-			fmt.Println("Invalid command:", command)
-			writer.Write(Value{typ: "string", str: ""})
+			errReply := Value{typ: "error", str: fmt.Sprintf("ERR unknown command '%s'", name)}
+			if err := writer.Write(errReply); err != nil {
+				return
+			}
 			continue
 		}
 
-		// Persist write commands
-		if command == "SET" || command == "HSET" {
-			if err := aof.Write(value); err != nil {
-				fmt.Println("Error writing to AOF:", err)
-				continue
+		var result Value
+
+		if writeCommands[command] {
+			writeMu.Lock()
+			result = handler(args)
+
+			// Only successful commands are logged.
+			if result.typ != "error" {
+				if err := aof.Write(value); err != nil {
+					fmt.Println("Error writing to AOF:", err)
+					result = Value{typ: "error", str: "ERR failed to persist command"}
+				}
 			}
+			writeMu.Unlock()
+		} else {
+			result = handler(args)
 		}
 
-		result := handler(args)
-		writer.Write(result)
+		if err := writer.Write(result); err != nil {
+			return
+		}
 	}
 }
