@@ -2,20 +2,12 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strings"
 )
 
 func main() {
-	fmt.Println("Listening on port :6379")
-
-	l, err := net.Listen("tcp", ":6379")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer l.Close()
-
 	aof, err := NewAof("database.aof")
 	if err != nil {
 		fmt.Println(err)
@@ -23,7 +15,7 @@ func main() {
 	}
 	defer aof.Close()
 
-	// Load existing data from AOF
+	// Load existing data from AOF before accepting any client.
 	err = aof.Read(func(value Value) {
 		if value.typ != "array" || len(value.array) == 0 {
 			return
@@ -45,19 +37,39 @@ func main() {
 		return
 	}
 
-	conn, err := l.Accept()
+	l, err := net.Listen("tcp", ":6379")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	defer conn.Close()
+	defer l.Close()
+
+	fmt.Println("Listening on port :6379")
 
 	for {
-		resp := NewResp(conn)
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Accept error:", err)
+			continue
+		}
 
+		go handleConn(conn, aof)
+	}
+}
+
+func handleConn(conn net.Conn, aof *Aof) {
+	defer conn.Close()
+
+	// One reader and one writer for the whole lifetime of the connection.
+	resp := NewResp(conn)
+	writer := NewWriter(conn)
+
+	for {
 		value, err := resp.Read()
 		if err != nil {
-			fmt.Println(err)
+			if err != io.EOF {
+				fmt.Println("Read error:", err)
+			}
 			return
 		}
 
@@ -74,8 +86,6 @@ func main() {
 		command := strings.ToUpper(value.array[0].bulk)
 		args := value.array[1:]
 
-		writer := NewWriter(conn)
-
 		handler, ok := Handlers[command]
 		if !ok {
 			fmt.Println("Invalid command:", command)
@@ -85,8 +95,7 @@ func main() {
 
 		// Persist write commands
 		if command == "SET" || command == "HSET" {
-			err := aof.Write(value)
-			if err != nil {
+			if err := aof.Write(value); err != nil {
 				fmt.Println("Error writing to AOF:", err)
 				continue
 			}
