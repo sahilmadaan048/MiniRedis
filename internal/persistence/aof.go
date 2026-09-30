@@ -1,10 +1,13 @@
-package main
+// Package persistence implements the append-only file (AOF).
+package persistence
 
 import (
 	"io"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/sahilmadaan048/miniredis/internal/resp"
 )
 
 type Aof struct {
@@ -47,16 +50,16 @@ func (aof *Aof) syncLoop() {
 }
 
 func (aof *Aof) Close() error {
-	close(aof.done) // stop the sync goroutine
+	close(aof.done)
 
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
 
-	aof.file.Sync() // final flush so nothing is left in the OS cache
+	aof.file.Sync()
 	return aof.file.Close()
 }
 
-func (aof *Aof) Write(value Value) error {
+func (aof *Aof) Write(value resp.Value) error {
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
 
@@ -65,19 +68,18 @@ func (aof *Aof) Write(value Value) error {
 }
 
 // Read replays every command in the file, calling callback for each one.
-func (aof *Aof) Read(callback func(value Value)) error {
+func (aof *Aof) Read(callback func(value resp.Value)) error {
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
 
-	// Start reading from the beginning of the file.
 	if _, err := aof.file.Seek(0, 0); err != nil {
 		return err
 	}
 
-	resp := NewResp(aof.file)
+	rd := resp.NewReader(aof.file)
 
 	for {
-		value, err := resp.Read()
+		value, err := rd.Read()
 		if err == io.EOF {
 			break
 		}
