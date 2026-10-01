@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	prefixString = '+'
-	prefixError  = '-'
-	prefixBulk   = '$'
-	prefixArray  = '*'
+	prefixString  = '+'
+	prefixError   = '-'
+	prefixBulk    = '$'
+	prefixArray   = '*'
+	prefixInteger = ':'
 )
 
 // Limits protect the server from clients that announce absurd sizes.
@@ -26,7 +27,7 @@ const (
 type Value struct {
 	Typ   string // "array", "bulk", "string", "error", "null"
 	Str   string
-	Num   int
+	Num   int64
 	Bulk  string
 	Array []Value
 }
@@ -37,8 +38,10 @@ func SimpleString(s string) Value { return Value{Typ: "string", Str: s} }
 func Error(s string) Value        { return Value{Typ: "error", Str: s} }
 func BulkString(s string) Value   { return Value{Typ: "bulk", Bulk: s} }
 func Null() Value                 { return Value{Typ: "null"} }
+func Integer(n int64) Value       { return Value{Typ: "integer", Num: n} }
+func Array(vals []Value) Value    { return Value{Typ: "array", Array: vals} }
 
-// ---------- Reading ----------
+// Reading
 
 type Reader struct {
 	rd *bufio.Reader
@@ -183,9 +186,17 @@ func (v Value) Marshal() []byte {
 		return []byte("$-1\r\n")
 	case "error":
 		return v.marshalError()
+	case "integer":
+		return v.marshalInteger()
 	default:
 		return []byte{}
 	}
+}
+
+func (v Value) marshalInteger() []byte {
+	b := []byte{prefixInteger}
+	b = strconv.AppendInt(b, v.Num, 10)
+	return append(b, '\r', '\n')
 }
 
 func (v Value) marshalString() []byte {

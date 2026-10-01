@@ -70,12 +70,12 @@ func TestReadEOFSemantics(t *testing.T) {
 
 func TestReadProtocolErrors(t *testing.T) {
 	bad := []string{
-		"?garbage\r\n",           // unknown type byte
-		"*abc\r\n",               // non-numeric length
-		"*-5\r\n",                // negative array length
-		"$3\r\nabcXX",            // bulk not terminated by CRLF
+		"?garbage\r\n",             // unknown type byte
+		"*abc\r\n",                 // non-numeric length
+		"*-5\r\n",                  // negative array length
+		"$3\r\nabcXX",              // bulk not terminated by CRLF
 		"$999999999999\r\nabc\r\n", // absurd bulk length
-		"*1\n",                   // LF without CR
+		"*1\n",                     // LF without CR
 	}
 	for _, in := range bad {
 		if _, err := NewReader(strings.NewReader(in)).Read(); err == nil {
@@ -119,5 +119,20 @@ func TestRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, orig) {
 		t.Fatalf("got %+v, want %+v", got, orig)
+	}
+}
+
+func TestMarshalInteger(t *testing.T) {
+	tests := map[int64]string{0: ":0\r\n", 42: ":42\r\n", -2: ":-2\r\n"}
+	for n, want := range tests {
+		if got := string(Integer(n).Marshal()); got != want {
+			t.Errorf("Integer(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
+
+func TestMarshalEmptyArray(t *testing.T) {
+	if got := string(Array(nil).Marshal()); got != "*0\r\n" {
+		t.Fatalf("got %q", got)
 	}
 }
